@@ -3,8 +3,6 @@ import csv
 
 def extract_labels_from_filenames(folder_path, output_csv):
     data = []
-
-
     for filename in os.listdir(folder_path):
         if filename.endswith(".jpg"):
             # Extract the label from the filename
