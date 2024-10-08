@@ -4,7 +4,7 @@ import csv
 def extract_labels_from_filenames(folder_path, output_csv):
     data = []
     for filename in os.listdir(folder_path):
-        if filename.endswith(".jpg"):
+        if filename.endswith((".jpg",".png",".JPG",".PNG")):
             # Extract the label from the filename
             label = filename.split('.')[0]
 
