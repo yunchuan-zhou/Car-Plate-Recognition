@@ -3,19 +3,20 @@ import csv
 
 def extract_labels_from_filenames(folder_path, output_csv):
     data = []
-    for filename in os.listdir(folder_path):
+    for i, filename in enumerate(sorted(os.listdir(folder_path))):
         if filename.endswith((".jpg",".png",".JPG",".PNG")):
             # Extract the label from the filename
             label = filename.split('.')[0]
 
             # Append the filename and label to the data list
-            data.append([filename, label])
+            image_path = os.path.join(folder_path, filename)
+            data.append((i, image_path, label))
 
 
     # Write the data to a CSV file
     with open(output_csv, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['Filename', 'Label'])
+        writer.writerow(('id', 'image_path', 'label'))
         writer.writerows(data)
 
     print(f"Labels extracted and saved to {output_csv}")
