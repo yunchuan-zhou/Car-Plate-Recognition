@@ -8,6 +8,9 @@ def extract_labels_from_filenames(folder_path, output_csv):
             # Extract the label from the filename
             label = filename.split('.')[0]
 
+            if "_" in label:
+                label = label.split("_")[0]
+
             # Append the filename and label to the data list
             image_path = os.path.join(folder_path, filename)
             data.append((i, image_path, label))

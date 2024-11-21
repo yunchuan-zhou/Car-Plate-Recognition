@@ -2,7 +2,7 @@ id,image_path,label
 0,dataset_final/test\1033IR.png,1033IR
 1,dataset_final/test\2348XR25.jpg,2348XR25
 2,dataset_final/test\34EN9199.png,34EN9199
-3,dataset_final/test\381ATK83_1.png,381ATK83_1
+3,dataset_final/test\381ATK83_1.png,381ATK83
 4,dataset_final/test\55SG53.jpg,55SG53
 5,dataset_final/test\5658YA22.jpg,5658YA22
 6,dataset_final/test\5888881.png,5888881
@@ -19,7 +19,7 @@ id,image_path,label
 17,dataset_final/test\B21GSB.png,B21GSB
 18,dataset_final/test\B225RTK.png,B225RTK
 19,dataset_final/test\B961TAG.png,B961TAG
-20,dataset_final/test\B96SXV_1.png,B96SXV_1
+20,dataset_final/test\B96SXV_1.png,B96SXV
 21,dataset_final/test\BA999ZZ.png,BA999ZZ
 22,dataset_final/test\BL33635.png,BL33635
 23,dataset_final/test\BL654BP.png,BL654BP
@@ -63,12 +63,12 @@ id,image_path,label
 61,dataset_final/test\SG49711.png,SG49711
 62,dataset_final/test\SLF9995.png,SLF9995
 63,dataset_final/test\SPR911.JPG,SPR911
-64,dataset_final/test\TR95XMI_1.png,TR95XMI_1
+64,dataset_final/test\TR95XMI_1.png,TR95XMI
 65,dataset_final/test\VI496AN.png,VI496AN
-66,dataset_final/test\VS236891_1.png,VS236891_1
+66,dataset_final/test\VS236891_1.png,VS236891
 67,dataset_final/test\WANNE685.JPG,WANNE685
 68,dataset_final/test\WW697BH.jpg,WW697BH
 69,dataset_final/test\WW921MX.jpg,WW921MX
-70,dataset_final/test\YB75711.png,YB75711
+70,dataset_final/test\YBZ5711.png,YBZ5711
 71,dataset_final/test\Z3010AZ.png,Z3010AZ
 72,dataset_final/test\ZU295AJ.png,ZU295AJ
