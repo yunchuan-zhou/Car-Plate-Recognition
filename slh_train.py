@@ -244,6 +244,27 @@ def custom_collate_fn(batch):
     label_lengths = torch.tensor(label_lengths, dtype=torch.long)
     return images, padded_labels, label_lengths
 
+def decode_predictions(predictions, characters):
+    """
+    Decodes model predictions using greedy decoding.
+    Removes repeated characters and blanks (CTC blank index).
+    """
+    blank_index = len(characters)  # Assume the blank index is the last one
+    decoded_output = []
+
+    for pred in predictions:
+        pred_text = []
+        prev_char = None
+        for p in pred:
+            if p == blank_index:  # Skip blank token
+                prev_char = None
+                continue
+            if p != prev_char:  # Avoid repeated characters
+                pred_text.append(characters[p])
+            prev_char = p
+        decoded_output.append("".join(pred_text))
+    return decoded_output
+
 
 # CRNN Model
 class CRNNModel(nn.Module):
@@ -287,8 +308,21 @@ class CRNNModel(nn.Module):
         return self.softmax(x)
 
 
-# Training Loop
 def train_model(model, dataloader, criterion, optimizer, num_epochs):
+    """
+    Train the CRNN model while logging matched and mismatched predictions.
+
+    Args:
+        model: PyTorch model to train.
+        dataloader: DataLoader providing the training data.
+        criterion: Loss function (CTCLoss).
+        optimizer: Optimizer for backpropagation.
+        num_epochs: Number of training epochs.
+
+    Returns:
+        train_losses: List of average loss for each epoch.
+        train_accuracies: List of accuracy for each epoch.
+    """
     model.train()
     train_losses = []
     train_accuracies = []
@@ -299,10 +333,11 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
         correct_predictions = 0
         total_predictions = 0
         mismatched_predictions = []
+        matched_predictions = []
 
         for batch_idx, (images, labels, label_lengths) in enumerate(dataloader):
             outputs = model(images)
-            outputs = outputs.permute(1, 0, 2)
+            outputs = outputs.permute(1, 0, 2)  # Shape: (seq_len, batch_size, num_classes)
             input_lengths = torch.full((images.size(0),), outputs.size(0), dtype=torch.long)
 
             loss = criterion(outputs, labels, input_lengths, label_lengths)
@@ -312,15 +347,22 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
 
             running_loss += loss.item()
 
+            # Decode predictions and labels
             predicted_sequences = outputs.argmax(2).permute(1, 0).tolist()
-            label_texts = [''.join([characters[l] for l in label if l < len(characters)]) for label in labels.tolist()]
+            label_texts = [
+                "".join([characters[l] for l in label if l < len(characters)])
+                for label in labels.tolist()
+            ]
 
             for pred_seq, label_text in zip(predicted_sequences, label_texts):
-                pred_text = ''.join([characters[p] if p < len(characters) else '?' for p in pred_seq])
-                if pred_text != label_text:
-                    mismatched_predictions.append((pred_text, label_text))
-                else:
+                pred_text = "".join(
+                    [characters[p] if p < len(characters) else "?" for p in pred_seq]
+                )
+                if pred_text == label_text:
+                    matched_predictions.append((pred_text, label_text))
                     correct_predictions += 1
+                else:
+                    mismatched_predictions.append((pred_text, label_text))
                 total_predictions += 1
 
         epoch_loss = running_loss / len(dataloader)
@@ -329,16 +371,24 @@ def train_model(model, dataloader, criterion, optimizer, num_epochs):
         train_accuracies.append(epoch_accuracy)
 
         print(f"Epoch [{epoch}/{num_epochs}] - Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.4f}")
-        print(f"Total Predictions: {total_predictions}, Mismatched Predictions: {len(mismatched_predictions)}")
-        print(f"\nSample Predictions vs. Labels:")
-        for pred, label in zip(predicted_sequences[:5], label_texts[:5]):
+        print(f"Total Predictions: {total_predictions}, Matched Predictions: {correct_predictions}, Mismatched Predictions: {len(mismatched_predictions)}")
+
+        # Log matched predictions
+        print(f"\nMatched Predictions (Epoch {epoch}):")
+        for pred, label in matched_predictions[:15]:
             print(f"Prediction: {pred}, Label: {label}")
 
+        # Log mismatched predictions
         print(f"\nMismatched Predictions (Epoch {epoch}):")
-        for pred, label in mismatched_predictions[:5]:
+        for pred, label in mismatched_predictions[:15]:
             print(f"Prediction: {pred}, Label: {label}")
+
+        # Print counts
+        print(f"\nNumber of tests in epoch: {total_predictions}")
+        print(f"Number of mismatched predictions in epoch: {len(mismatched_predictions)}\n")
 
     return train_losses, train_accuracies
+
 
 
 # Plot Loss and Accuracy
@@ -379,7 +429,7 @@ if __name__ == '__main__':
     criterion = nn.CTCLoss(blank=num_classes)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    train_losses, train_accuracies = train_model(model, dataloader, criterion, optimizer, num_epochs=10)
+    train_losses, train_accuracies = train_model(model, dataloader, criterion, optimizer, num_epochs=150)
     plot_metrics(train_losses, train_accuracies)
 
 
