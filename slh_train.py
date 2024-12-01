@@ -165,24 +165,22 @@
 #     # Save the trained model
 #     torch.save(model.state_dict(), 'crnn_model.pth')
 #     print("Model training complete. Saved to 'crnn_model.pth'")
-
-
-import pandas as pd
 import torch
+import cv2
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
+import pandas as pd
 import numpy as np
-import cv2
-import torch.nn as nn
-from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
+import matplotlib.pyplot as plt
 
-# Import your model configuration
-from CRNN_GRU import characters, num_classes
+# Define characters and number of classes
+characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+num_classes = len(characters)
 
-
-# Dataset class
+# Dataset Class
 class LicensePlateDataset(Dataset):
     def __init__(self, csv_file, transform=None):
         self.data = pd.read_csv(csv_file)
@@ -194,8 +192,8 @@ class LicensePlateDataset(Dataset):
     def __getitem__(self, idx):
         img_path = self.data.iloc[idx, 1]
         label = self.data.iloc[idx, 2]
-        label_encoded = encode_label(label)  # Encode label to indices
-        image = Image.open(img_path).convert("L")
+        label_encoded = [characters.index(c) for c in label]
+        image = Image.open(img_path).convert("RGB")
 
         if self.transform:
             image = self.transform(image)
@@ -203,7 +201,8 @@ class LicensePlateDataset(Dataset):
         return image, torch.tensor(label_encoded), len(label_encoded)
 
 
-# Resize with padding
+# Resize with Padding Transformation
+# Resize with Padding Transformation
 class ResizeWithPadding:
     def __init__(self, target_height=32, target_width=128):
         self.target_height = target_height
@@ -213,108 +212,160 @@ class ResizeWithPadding:
         image = np.array(image)
         h, w = image.shape[:2]
 
-        # Resize the image while maintaining the aspect ratio
+        # Calculate the scale factor to resize the image
         scale = self.target_height / h
         new_width = int(w * scale)
-        resized_image = cv2.resize(image, (new_width, self.target_height))
 
-        # Pad the image to the target width
-        padded_image = np.zeros((self.target_height, self.target_width), dtype=np.uint8)
-        padded_image[:, :min(new_width, self.target_width)] = resized_image[:, :min(new_width, self.target_width)]
+        if new_width > self.target_width:
+            # If the resized width exceeds the target width, scale down further
+            scale = self.target_width / w
+            new_width = self.target_width
+            resized_image = cv2.resize(image, (new_width, self.target_height))
+        else:
+            resized_image = cv2.resize(image, (new_width, self.target_height))
 
-        # Convert to 3-channel RGB by stacking
-        padded_image = np.stack([padded_image] * 3, axis=-1)
+        # Create a padded image with the target dimensions
+        padded_image = np.zeros((self.target_height, self.target_width, 3), dtype=np.uint8)
+        padded_image[:, :new_width] = resized_image  # Place resized image on the left
 
         return Image.fromarray(padded_image)
 
 
-# Custom collation function for variable-length labels
+
+# Custom Collate Function
 def custom_collate_fn(batch):
     images, labels, label_lengths = zip(*batch)
-
-    # Pad labels to the maximum length in this batch
     max_label_length = max(label_lengths)
     padded_labels = torch.zeros((len(labels), max_label_length), dtype=torch.long)
     for i, label in enumerate(labels):
         padded_labels[i, :len(label)] = label
 
-    # Stack images and label lengths
     images = torch.stack(images, dim=0)
     label_lengths = torch.tensor(label_lengths, dtype=torch.long)
-
     return images, padded_labels, label_lengths
 
 
-# Encode labels into indices
-def encode_label(label):
-    return [characters.index(c) for c in label]
+# CRNN Model
+class CRNNModel(nn.Module):
+    def __init__(self, num_classes):
+        super(CRNNModel, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-def decode_output(output):
-    """
-    Decodes a single prediction or a list of predictions.
-    """
-    if isinstance(output, int):  # Handle single integers
-        return characters[output] if output < len(characters) else ""
-    elif isinstance(output, list):  # Handle list of indices
-        return ''.join([characters[i] for i in output if i < len(characters)])
-    else:
-        raise TypeError(f"Expected int or list, but got {type(output)}")
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(128)
+        self.pool3 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
 
+        self.flatten = nn.Flatten(start_dim=2)
+        self.fc = nn.Linear(128 * 8, 64)
 
+        self.lstm1 = nn.LSTM(64, 256, bidirectional=True, batch_first=True)
+        self.lstm2 = nn.LSTM(512, 256, bidirectional=True, batch_first=True)
 
-# Calculate accuracy
-# Function to calculate accuracy
-def calculate_accuracy(predictions, labels):
-    """
-    Calculate the percentage of correct predictions.
-    Each prediction is compared to its corresponding label.
-    """
-    correct = 0
-    total = len(labels)
-
-    for pred_seq, label_seq in zip(predictions, labels):
-        pred_text = decode_output(pred_seq)
-        label_text = decode_output(label_seq)
-        if pred_text == label_text:
-            correct += 1
-
-    return correct / total if total > 0 else 0
-
-
-
-# Model Definition
-class VGG_GRU_CTC_Model(nn.Module):
-    def __init__(self):
-        super(VGG_GRU_CTC_Model, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # 32x128 -> 16x64
-            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # 16x64 -> 8x32
-            nn.Conv2d(128, 256, kernel_size=3, padding=1), nn.ReLU(),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=(2, 1), padding=(0, 1)),  # 8x32 -> 4x33
-        )
-        self.rnn = nn.GRU(input_size=256 * 4, hidden_size=256, bidirectional=True, batch_first=True)
-        self.classifier = nn.Linear(256 * 2, num_classes)  # +1 for blank token
+        self.fc_out = nn.Linear(512, num_classes + 1)
+        self.softmax = nn.LogSoftmax(dim=2)
 
     def forward(self, x):
-        x = self.features(x)  # Shape: (batch_size, 256, 4, 33)
+        x = self.pool1(nn.ReLU()(self.bn1(self.conv1(x))))
+        x = self.pool2(nn.ReLU()(self.bn2(self.conv2(x))))
+        x = self.pool3(nn.ReLU()(self.bn3(self.conv3(x))))
 
-        # Reshape for RNN
-        batch_size, channels, height, width = x.size()
-        x = x.permute(0, 3, 1, 2)  # (batch_size, width, channels, height)
-        x = x.contiguous().view(batch_size, width, -1)  # (batch_size, seq_len, features)
+        b, c, h, w = x.size()
+        x = x.permute(0, 3, 1, 2)
+        x = self.flatten(x)
+        x = self.fc(x)
 
-        x, _ = self.rnn(x)  # (batch_size, seq_len, hidden_size*2)
-        x = self.classifier(x)  # (batch_size, seq_len, num_classes)
-        return x
-import matplotlib.pyplot as plt
+        x, _ = self.lstm1(x)
+        x, _ = self.lstm2(x)
 
-# Main Training Loop
+        x = self.fc_out(x)
+        return self.softmax(x)
+
+
+# Training Loop
+def train_model(model, dataloader, criterion, optimizer, num_epochs):
+    model.train()
+    train_losses = []
+    train_accuracies = []
+
+    for epoch in range(1, num_epochs + 1):
+        print(f"\nEpoch [{epoch}/{num_epochs}] - Starting training...")
+        running_loss = 0.0
+        correct_predictions = 0
+        total_predictions = 0
+        mismatched_predictions = []
+
+        for batch_idx, (images, labels, label_lengths) in enumerate(dataloader):
+            outputs = model(images)
+            outputs = outputs.permute(1, 0, 2)
+            input_lengths = torch.full((images.size(0),), outputs.size(0), dtype=torch.long)
+
+            loss = criterion(outputs, labels, input_lengths, label_lengths)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+
+            predicted_sequences = outputs.argmax(2).permute(1, 0).tolist()
+            label_texts = [''.join([characters[l] for l in label if l < len(characters)]) for label in labels.tolist()]
+
+            for pred_seq, label_text in zip(predicted_sequences, label_texts):
+                pred_text = ''.join([characters[p] if p < len(characters) else '?' for p in pred_seq])
+                if pred_text != label_text:
+                    mismatched_predictions.append((pred_text, label_text))
+                else:
+                    correct_predictions += 1
+                total_predictions += 1
+
+        epoch_loss = running_loss / len(dataloader)
+        epoch_accuracy = correct_predictions / total_predictions
+        train_losses.append(epoch_loss)
+        train_accuracies.append(epoch_accuracy)
+
+        print(f"Epoch [{epoch}/{num_epochs}] - Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.4f}")
+        print(f"Total Predictions: {total_predictions}, Mismatched Predictions: {len(mismatched_predictions)}")
+        print(f"\nSample Predictions vs. Labels:")
+        for pred, label in zip(predicted_sequences[:5], label_texts[:5]):
+            print(f"Prediction: {pred}, Label: {label}")
+
+        print(f"\nMismatched Predictions (Epoch {epoch}):")
+        for pred, label in mismatched_predictions[:5]:
+            print(f"Prediction: {pred}, Label: {label}")
+
+    return train_losses, train_accuracies
+
+
+# Plot Loss and Accuracy
+def plot_metrics(train_losses, train_accuracies):
+    epochs = range(1, len(train_losses) + 1)
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, train_losses, label="Loss")
+    plt.title("Training Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, train_accuracies, label="Accuracy")
+    plt.title("Training Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+# Main Function
 if __name__ == '__main__':
-    print("Initializing dataset and dataloader...")
     transform = transforms.Compose([
         ResizeWithPadding(target_height=32, target_width=128),
         transforms.ToTensor(),
@@ -323,104 +374,13 @@ if __name__ == '__main__':
 
     dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform)
     dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=custom_collate_fn)
-    print("Dataset loaded successfully!")
-    print(f"Number of samples: {len(dataset)}")
 
-    model = VGG_GRU_CTC_Model()
+    model = CRNNModel(num_classes=num_classes)
+    criterion = nn.CTCLoss(blank=num_classes)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    criterion = nn.CTCLoss(blank=num_classes - 1)  # Blank token index is the last one
-    optimizer = Adam(model.parameters(), lr=0.001)
-    scheduler = StepLR(optimizer, step_size=10, gamma=0.5)  # Adjust learning rate
+    train_losses, train_accuracies = train_model(model, dataloader, criterion, optimizer, num_epochs=10)
+    plot_metrics(train_losses, train_accuracies)
 
-    print("Starting training...")
-    num_epochs = 150
-    train_accuracies = []
 
-    # Training Loop
-    # Training Loop with Debugging Logs
-    # Training Loop with Debugging Logs
-    losses = []
-    accuracies = []
-
-    for epoch in range(num_epochs):
-        model.train()
-        total_loss = 0.0
-        correct_predictions = 0
-        total_samples = 0
-        mismatched_predictions = []  # Reset mismatched predictions for each epoch
-
-        print(f"\nEpoch [{epoch + 1}/{num_epochs}] - Starting training...")
-
-        for batch_idx, (images, labels, label_lengths) in enumerate(dataloader):
-            outputs = model(images)  # Forward pass
-            outputs = outputs.permute(1, 0, 2).log_softmax(2)  # Adjust shape for CTCLoss
-            input_lengths = torch.full((images.size(0),), outputs.size(0), dtype=torch.long)
-
-            # Compute loss
-            loss = criterion(outputs, labels, input_lengths, label_lengths.clone().detach())
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            total_loss += loss.item()
-
-            # Decode predictions for accuracy calculation
-            predicted_sequences = outputs.argmax(2).permute(1, 0).tolist()  # Ensure list of lists
-            batch_accuracy = calculate_accuracy(predicted_sequences, labels.tolist())
-            correct_predictions += batch_accuracy * len(labels)
-            total_samples += len(labels)
-
-            # Log mismatched predictions for this batch
-            for pred_seq, label_seq in zip(predicted_sequences, labels.tolist()):
-                pred_text = decode_output(pred_seq)
-                label_text = decode_output(label_seq)
-                if pred_text != label_text:
-                    mismatched_predictions.append((pred_text, label_text))
-
-            # Debugging log: print predictions vs. labels for the first batch in the epoch
-            if batch_idx == 0:
-                print("\nSample Predictions vs. Labels (Batch 0):")
-                for pred_seq, label_seq in zip(predicted_sequences[:5], labels.tolist()[:5]):
-                    pred_text = decode_output(pred_seq)
-                    label_text = decode_output(label_seq)
-                    print(f"Prediction: {pred_text}, Label: {label_text}")
-
-        # Record epoch loss and accuracy
-        epoch_loss = total_loss / len(dataloader)
-        epoch_accuracy = correct_predictions / total_samples
-        losses.append(epoch_loss)
-        accuracies.append(epoch_accuracy)
-
-        # Log the total number of predictions and mismatched predictions
-        total_mismatches = len(mismatched_predictions)
-        print(f"\nEpoch [{epoch + 1}/{num_epochs}] - Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.4f}")
-        print(f"Total Predictions: {total_samples}, Mismatched Predictions: {total_mismatches}")
-
-        # Print mismatched predictions for this epoch (first 10 for brevity)
-        if total_mismatches > 0:
-            print(f"\nMismatched Predictions (Epoch {epoch + 1}):")
-            for pred, label in mismatched_predictions[:30]:
-                print(f"Prediction: {pred}, Label: {label}")
-
-    # Plot Loss and Accuracy
-    plt.figure(figsize=(12, 5))
-
-    # Loss plot
-    plt.subplot(1, 2, 1)
-    plt.plot(range(1, num_epochs + 1), losses, marker='o', linestyle='-', color='b')
-    plt.title("Training Loss Over Epochs")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.grid(alpha=0.5)
-
-    # Accuracy plot
-    plt.subplot(1, 2, 2)
-    plt.plot(range(1, num_epochs + 1), accuracies, marker='o', linestyle='-', color='g')
-    plt.title("Training Accuracy Over Epochs")
-    plt.xlabel("Epoch")
-    plt.ylabel("Accuracy")
-    plt.grid(alpha=0.5)
-
-    plt.tight_layout()
-    plt.show()
 
