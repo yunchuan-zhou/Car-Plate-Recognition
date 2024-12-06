@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
+
 # Define characters and number of classes
 characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 num_classes = len(characters)
@@ -30,36 +31,36 @@ class LicensePlateDataset(Dataset):
         image = Image.open(img_path).convert("L")  # Ensure grayscale image
 
         if self.transform:
-            image = np.array(image)  # Convert PIL image to ndarray
-            image = self.transform(image)  # Apply transformations (like resizing)
+            #image = np.array(image)  # Convert PIL image to ndarray
+            image = self.transform(image)  
 
         return image, torch.tensor(label_encoded), len(label_encoded)
 
 # Resize with Padding Transformation
-class ResizeWithPadding:
-    def __init__(self, target_height=32, target_width=128):
-        self.target_height = target_height
-        self.target_width = target_width
+# class ResizeWithPadding:
+#     def __init__(self, target_height=32, target_width=128):
+#         self.target_height = target_height
+#         self.target_width = target_width
 
-    def __call__(self, image):
-        image = np.array(image)  # Convert PIL Image to NumPy array
-        h, w = image.shape[:2]  # Height and width of the image
+#     def __call__(self, image):
+#         image = np.array(image)  # Convert PIL Image to NumPy array
+#         h, w = image.shape[:2]  # Height and width of the image
 
-        # Calculate the scale factor to resize the image
-        scale = self.target_height / h
-        new_width = int(w * scale)
+#         # Calculate the scale factor to resize the image
+#         scale = self.target_height / h
+#         new_width = int(w * scale)
 
-        if new_width > self.target_width:
-            scale = self.target_width / w
-            new_width = self.target_width
-            resized_image = cv2.resize(image, (new_width, self.target_height))
-        else:
-            resized_image = cv2.resize(image, (new_width, self.target_height))
+#         if new_width > self.target_width:
+#             scale = self.target_width / w
+#             new_width = self.target_width
+#             resized_image = cv2.resize(image, (new_width, self.target_height))
+#         else:
+#             resized_image = cv2.resize(image, (new_width, self.target_height))
 
-        padded_image = np.zeros((self.target_height, self.target_width), dtype=np.uint8)
-        padded_image[:, :new_width] = resized_image  # Place resized image on the left
+#         padded_image = np.zeros((self.target_height, self.target_width), dtype=np.uint8)
+#         padded_image[:, :new_width] = resized_image  # Place resized image on the left
 
-        return Image.fromarray(padded_image)
+#         return Image.fromarray(padded_image)
 
 
 # Custom Collate Function
@@ -68,7 +69,8 @@ def custom_collate_fn(batch):
     max_label_length = max(label_lengths)
 
     # Pad labels to the maximum label length in the batch
-    padded_labels = torch.zeros((len(labels), max_label_length), dtype=torch.long)
+    pad_index = len(characters)
+    padded_labels = torch.full((len(labels), max_label_length), pad_index, dtype=torch.long)
     for i, label in enumerate(labels):
         padded_labels[i, :len(label)] = label
 
@@ -88,30 +90,55 @@ from torch.nn import functional as F
 import matplotlib.pyplot as plt
 import numpy as np
 
-# CRNN Model (as defined earlier)
+# CRNN Model 1
+# class CRNNModel(nn.Module):
+#     def __init__(self, num_classes):
+#         super(CRNNModel, self).__init__()
+#         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
+#         self.bn1 = nn.BatchNorm2d(32)
+#         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+#         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+#         self.bn2 = nn.BatchNorm2d(64)
+#         self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+#         self.dropout2 = nn.Dropout(0.3)
+
+#         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+#         self.bn3 = nn.BatchNorm2d(128)
+#         self.pool3 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
+#         self.dropout3 = nn.Dropout(0.3)
+
+#         self.fc1 = nn.Linear(128 * 8, 64)
+
+#         self.lstm1 = nn.LSTM(64, 256, bidirectional=True, batch_first=True, dropout=0.3)
+#         self.lstm2 = nn.LSTM(512, 256, bidirectional=True, batch_first=True, dropout=0.3)
+
+#         self.fc_out = nn.Linear(512, num_classes)
+        
+
+#     def forward(self, x):
+#         x = self.pool1(F.relu(self.bn1(self.conv1(x))))
+#         x = self.pool2(F.relu(self.bn2(self.conv2(x))))
+#         x = self.dropout2(x)
+#         x = self.pool3(F.relu(self.bn3(self.conv3(x))))
+#         x = self.dropout3(x)
+
+#         b, c, h, w = x.size()
+#         x = x.permute(0, 3, 1, 2)
+#         x = x.reshape(b, w, c * h)
+
+#         x = F.relu(self.fc1(x))
+#         x, _ = self.lstm1(x)
+#         x, _ = self.lstm2(x)
+#         x = self.fc_out(x)
+#         return F.log_softmax(x, dim=2)
+
+
+# CRNN model 2
 class CRNNModel(nn.Module):
     def __init__(self, num_classes):
         super(CRNNModel, self).__init__()
-        # self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        # self.bn1 = nn.BatchNorm2d(32)
-        # self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        # self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        # self.bn2 = nn.BatchNorm2d(64)
-        # self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
-        # self.dropout2 = nn.Dropout(0.3)
-
-        # self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        # self.bn3 = nn.BatchNorm2d(128)
-        # self.pool3 = nn.MaxPool2d(kernel_size=(1, 2), stride=(1, 2))
-        # self.dropout3 = nn.Dropout(0.3)
-
-        # self.fc1 = nn.Linear(128 * 8, 64)
-
-        # self.lstm1 = nn.LSTM(64, 256, bidirectional=True, batch_first=True, dropout=0.3)
-        # self.lstm2 = nn.LSTM(512, 256, bidirectional=True, batch_first=True, dropout=0.3)
-
-        # self.fc_out = nn.Linear(512, num_classes)
+        
         self.conv1 = nn.Conv2d(1, 64, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(64)
         self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -137,21 +164,6 @@ class CRNNModel(nn.Module):
         self.fc_out = nn.Linear(512, num_classes )   
 
     def forward(self, x):
-        # x = self.pool1(F.relu(self.bn1(self.conv1(x))))
-        # x = self.pool2(F.relu(self.bn2(self.conv2(x))))
-        # x = self.dropout2(x)
-        # x = self.pool3(F.relu(self.bn3(self.conv3(x))))
-        # x = self.dropout3(x)
-
-        # b, c, h, w = x.size()
-        # x = x.permute(0, 3, 1, 2)
-        # x = x.reshape(b, w, c * h)
-
-        # x = F.relu(self.fc1(x))
-        # x, _ = self.lstm1(x)
-        # x, _ = self.lstm2(x)
-        # x = self.fc_out(x)
-        # return F.log_softmax(x, dim=2)
         x = self.pool1(F.relu(self.bn1(self.conv1(x))))
         x = self.dropout1(x)
         x = self.pool2(F.relu(self.bn2(self.conv2(x))))
@@ -159,18 +171,14 @@ class CRNNModel(nn.Module):
         x = self.pool3(F.relu(self.bn3(self.conv3(x))))
         x = self.dropout3(x)
         x = self.pool_final(x)
-
         b, c, h, w = x.size()
         x = x.squeeze(2).permute(0, 2, 1)  # [batch, width, channel]
-
         x, _ = self.lstm1(x)
         x = self.dropout_lstm1(x)
         x, _ = self.lstm2(x)
         x = self.dropout_lstm2(x)
         x = self.fc_out(x)
-
         return F.log_softmax(x, dim=2)
-
 
 # Decode predictions for analysis
 def decode_predictions(predictions, characters):
@@ -188,15 +196,18 @@ def decode_predictions(predictions, characters):
             prev_char = p
         decoded_output.append("".join(pred_text))
     return decoded_output
+ 
 
-
-def train_model(model, dataloader,val_loader, criterion, optimizer, num_epochs, characters):
+def train_model(model, dataloader,val_loader, criterion, optimizer, num_epochs, characters,device):
+    model.to(device)
     train_losses = []
     train_word_accuracies = []
     train_char_accuracies = []
     val_losses = []
     val_word_accuracies = []
     val_char_accuracies = []
+    best_character_acc = 0.0
+    best_weights = None
 
     for epoch in range(1, num_epochs + 1):
         model.train()
@@ -209,10 +220,12 @@ def train_model(model, dataloader,val_loader, criterion, optimizer, num_epochs, 
         mismatched_predictions = []
 
         for batch_idx, (images, labels, label_lengths) in enumerate(dataloader):
+            images = images.to(device)
+            labels = labels.to(device)
             optimizer.zero_grad()
             outputs = model(images)
             outputs = outputs.permute(1, 0, 2)
-            input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long)
+            input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long).to(device)
 
             loss = criterion(outputs, labels, input_lengths, label_lengths)
             loss.backward()
@@ -240,15 +253,15 @@ def train_model(model, dataloader,val_loader, criterion, optimizer, num_epochs, 
                     #mismatched_predictions.append((pred_text, label_text))
                 total_words += 1
 
-        epoch_loss = running_loss / len(dataloader)
-        word_accuracy = correct_words / total_words
-        char_accuracy = correct_chars / total_chars
+        t_epoch_loss = running_loss / len(dataloader)
+        t_word_accuracy = correct_words / total_words
+        t_char_accuracy = correct_chars / total_chars
 
-        train_losses.append(epoch_loss)
-        train_word_accuracies.append(word_accuracy)
-        train_char_accuracies.append(char_accuracy)
+        train_losses.append(t_epoch_loss)
+        train_word_accuracies.append(t_word_accuracy)
+        train_char_accuracies.append(t_char_accuracy)
 
-        print(f"Epoch [{epoch}/{num_epochs}] - Loss: {epoch_loss:.4f}, Word Accuracy: {word_accuracy:.4f}, Char Accuracy: {char_accuracy:.4f}")
+        
         # print("\nMatched Predictions:")
         # for pred, label in matched_predictions[:10]:
         #     print(f"Prediction: {pred}, Label: {label}")
@@ -269,9 +282,11 @@ def train_model(model, dataloader,val_loader, criterion, optimizer, num_epochs, 
 
         with torch.no_grad():
             for batch_idx, (images, labels, label_lengths) in enumerate(val_loader):
+                images = images.to(device)
+                labels = labels.to(device)
                 outputs = model(images)
                 outputs = outputs.permute(1, 0, 2)
-                input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long)
+                input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long).to(device)
 
                 loss = criterion(outputs, labels, input_lengths, label_lengths)
 
@@ -297,13 +312,21 @@ def train_model(model, dataloader,val_loader, criterion, optimizer, num_epochs, 
                         #mismatched_predictions.append((pred_text, label_text))
                     total_words += 1
 
-            epoch_loss = running_loss / len(val_loader)
-            word_accuracy = correct_words / total_words
-            char_accuracy = correct_chars / total_chars
+            v_epoch_loss = running_loss / len(val_loader)
+            v_word_accuracy = correct_words / total_words
+            v_char_accuracy = correct_chars / total_chars
 
-            val_losses.append(epoch_loss)
-            val_word_accuracies.append(word_accuracy)
-            val_char_accuracies.append(char_accuracy)
+            val_losses.append(v_epoch_loss)
+            val_word_accuracies.append(v_word_accuracy)
+            val_char_accuracies.append(v_char_accuracy)
+
+            # Save best model weights
+            if v_char_accuracy > best_character_acc:
+                best_character_acc = v_char_accuracy
+                torch.save(model.state_dict(), "best_model.pth")
+        print(f"Epoch [{epoch}/{num_epochs}] - T_Loss: {t_epoch_loss:.4f}, T_Word_Acc: {t_word_accuracy:.4f}, T_Char_Acc: {t_char_accuracy:.4f}, V_Loss: {v_epoch_loss:.4f}, V_Word_Acc: {v_word_accuracy:.4f}, V_Char_Acc: {v_char_accuracy:.4f}")
+
+    
 
     return train_losses, train_word_accuracies, train_char_accuracies, val_losses, val_word_accuracies, val_char_accuracies
 
@@ -345,26 +368,57 @@ def plot_metrics(train_losses, train_word_accuracies, train_char_accuracies,val_
 
 
 if __name__ == '__main__':
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    
     # Define transforms
-    transform = transforms.Compose([
+    transform_train = transforms.Compose([
+        transforms.Lambda(lambda img: Image.fromarray(img) if isinstance(img, np.ndarray) else img),
+        transforms.Resize((32, 128)),
+        transforms.ToTensor(),
+        # transforms.RandomApply([transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0)], p=0.5),
+        # transforms.RandomApply([transforms.RandomRotation(degrees=5)], p=0.5),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+        transforms.RandomRotation(degrees=5),
+        transforms.Normalize(mean=[0.5], std=[0.5]),
+    ])
+
+    transform_test = transforms.Compose([
         transforms.Lambda(lambda img: Image.fromarray(img) if isinstance(img, np.ndarray) else img),
         transforms.Resize((32, 128)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5], std=[0.5]),
     ])
 
-    dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=custom_collate_fn)
-    val_set = LicensePlateDataset(csv_file='labels_val.csv', transform=transform)
-    val_loader = DataLoader(val_set, batch_size=32, shuffle=False, collate_fn=custom_collate_fn)
+
+
+    batch_size = 32
+    # train_dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform_train)
+    # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
+
+    # val_set = LicensePlateDataset(csv_file='labels_val.csv', transform=transform_test)
+    # val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+
+    # test_set = LicensePlateDataset(csv_file='labels_test.csv', transform=transform_test)
+    # test_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+
+    train_dataset = LicensePlateDataset(csv_file='train.csv', transform=transform_train)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
+
+    test_dataset = LicensePlateDataset(csv_file='test.csv', transform=transform_test)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
     model = CRNNModel(num_classes=num_classes + 1)  # Add 1 for CTC blank index
-    criterion = nn.CTCLoss(blank=num_classes)
-    optimizer = optim.Adam(model.parameters(), lr=0.0005)
+    criterion = nn.CTCLoss(blank=num_classes).to(device)
+    optimizer = optim.AdamW(model.parameters(), lr=0.0005)
 
-    train_losses, train_word_accuracies, train_char_accuracies , val_losses, val_word_accuracies, val_char_accuracies= train_model(
-        model, dataloader,val_loader, criterion, optimizer, num_epochs=100, characters=characters
+    train_losses, train_word_accuracies, train_char_accuracies , val_losses, val_word_accuracies, val_char_accuracies = train_model(
+        model, train_loader,test_loader, criterion, optimizer, num_epochs=200, characters=characters,device=device
     )
+
+
+    
 
     # Plot metrics
     plot_metrics(train_losses, train_word_accuracies, train_char_accuracies,val_losses, val_word_accuracies, val_char_accuracies)
