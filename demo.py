@@ -99,15 +99,26 @@ def predict_demo(model, img_path, characters):
     
     
     decoded_text = decode_predictions(predicted_sequence, characters)[0]
-    plt.imshow(image, cmap='gray')
-    plt.axis('off')
-    plt.subplots_adjust(top=0.9, bottom=0.25)
-    plt.figtext(0.5, 0.2, f'Predicted Label: {decoded_text}', ha='center', fontsize=25, fontweight='bold')
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+
+    # Display the image on the left
+    axs[0].imshow(image, cmap='gray')
+    axs[0].axis('off')  # Remove axes for a cleaner look
+
+    # Add the predicted label on the right with adjusted horizontal position
+    axs[1].text(0.2, 0.6, 'Predicted Label:', ha='center', va='center', fontsize=20, fontweight='bold')
+    axs[1].text(0.2, 0.4, decoded_text, ha='center', va='center', fontsize=25, fontweight='bold')
+    axs[1].axis('off')  # Remove axes
+
+    # Adjust the layout to prevent overlapping
+    plt.subplots_adjust(wspace=0.4)
+
+    # Show the plot
     plt.show()
 
 if __name__ == '__main__':
 
     model = CRNNModel(num_classes=num_classes + 1)
     model.load_state_dict(torch.load('model_weight/best_model_9.pth'))
-    img_path = 'test_data/SPR911.JPG'
+    img_path = 'test_data/SJJ201.png'
     predict_demo(model, img_path, characters)
