@@ -10,47 +10,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
+
 # Define characters and number of classes
 characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 num_classes = len(characters)
 
-# Dataset Class
-class LicensePlateDataset(Dataset):
-    def __init__(self, csv_file, transform=None):
-        self.data = pd.read_csv(csv_file)
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        img_path = self.data.iloc[idx, 1]
-        label = self.data.iloc[idx, 2]
-        label_encoded = [characters.index(c) for c in label]
-        image = Image.open(img_path).convert("L")  # Ensure grayscale image
-
-        if self.transform:
-            #image = np.array(image)  # Convert PIL image to ndarray
-            image = self.transform(image)  
-
-        return image, torch.tensor(label_encoded), len(label_encoded)
-    
-# Custom Collate Function
-def custom_collate_fn(batch):
-    images, labels, label_lengths = zip(*batch)
-    max_label_length = max(label_lengths)
-
-    # Pad labels to the maximum label length in the batch
-    pad_index = len(characters)
-    padded_labels = torch.full((len(labels), max_label_length), pad_index, dtype=torch.long)
-    for i, label in enumerate(labels):
-        padded_labels[i, :len(label)] = label
-
-    # Stack images (they're already tensors from the Dataset)
-    images = torch.stack(images, dim=0)
-    label_lengths = torch.tensor(label_lengths, dtype=torch.long)
-
-    return images, padded_labels, label_lengths
 
 class CRNNModel(nn.Module):
     def __init__(self, num_classes):
@@ -115,41 +79,7 @@ def decode_predictions(predictions, characters):
     return decoded_output
 
 
-def demo(model, test_loader, characters):
-    model.eval()
-    correct_chars = 0
-    total_chars = 0
-    with torch.no_grad():
-        for i, (images, labels, label_lengths) in enumerate(test_loader):
-            images = images
-            labels = labels
-            label_lengths = label_lengths
-            
-
-            output = model(images)
-            output = output.permute(1, 0, 2)  # [width, batch, classes]
-
-            predicted_sequences = output.argmax(2).permute(1, 0).tolist()
-
-            label_texts = [
-                "".join([characters[l] for l in label if l < len(characters)])
-                for label in labels.tolist()
-            ]
-            decoded_predictions = decode_predictions(predicted_sequences, characters)
-
-            for pred_text, label_text in zip(decoded_predictions, label_texts):
-                # Character accuracy
-                correct_chars += sum(p == l for p, l in zip(pred_text, label_text))
-                total_chars += len(label_text)
-                # Word accuracy
-                if pred_text == label_text:
-                    print(f"Prediction: {pred_text}, Label: {label_text}")
-
-        char_accuracy = correct_chars / total_chars
-        print(f"Total Character Accuracy: {char_accuracy:.4f}")
-
-if __name__ == '__main__':
-
+def predict_demo(model, img_path, characters):
     transform_test = transforms.Compose([
         transforms.Lambda(lambda img: Image.fromarray(img) if isinstance(img, np.ndarray) else img),
         transforms.Resize((32, 128)),
@@ -157,10 +87,27 @@ if __name__ == '__main__':
         transforms.Normalize(mean=[0.5], std=[0.5]),
     ])
 
-    batch_size = 32
-    test_dataset = LicensePlateDataset(csv_file='test.csv', transform=transform_test)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+    image = Image.open(img_path)
+    img_L = image.convert("L")  
+    image_tensor = transform_test(img_L).unsqueeze(0)
+
+    model.eval()
+    with torch.no_grad():
+        output = model(image_tensor)
+        output = output.permute(1, 0, 2)  
+        predicted_sequence = output.argmax(2).permute(1,0).tolist()
+    
+    
+    decoded_text = decode_predictions(predicted_sequence, characters)[0]
+    plt.imshow(image, cmap='gray')
+    plt.axis('off')
+    plt.subplots_adjust(top=0.9, bottom=0.25)
+    plt.figtext(0.5, 0.2, f'Predicted Label: {decoded_text}', ha='center', fontsize=25, fontweight='bold')
+    plt.show()
+
+if __name__ == '__main__':
 
     model = CRNNModel(num_classes=num_classes + 1)
-    model.load_state_dict(torch.load('best_model_9.pth'))
-    demo(model, test_loader, characters)
+    model.load_state_dict(torch.load('model_weight/best_model_9.pth'))
+    img_path = 'test_data/SPR911.JPG'
+    predict_demo(model, img_path, characters)
