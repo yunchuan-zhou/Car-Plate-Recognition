@@ -15,7 +15,7 @@ from CRNN_model import CRNNModel
 characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 num_classes = len(characters)
 
-# Dataset Class
+# Dataset Class to load License Plate Images and Labels
 class LicensePlateDataset(Dataset):
     def __init__(self, csv_file, transform=None):
         self.data = pd.read_csv(csv_file)
@@ -27,6 +27,7 @@ class LicensePlateDataset(Dataset):
     def __getitem__(self, idx):
         img_path = self.data.iloc[idx, 1]
         label = self.data.iloc[idx, 2]
+        # Convert label to list of character indices
         label_encoded = [characters.index(c) for c in label]
         image = Image.open(img_path).convert("L")  # convert to grayscale image
 
@@ -50,7 +51,7 @@ def custom_collate_fn(batch):
     for i, label in enumerate(labels):
         padded_labels[i, :len(label)] = label
 
-    # Stack images (they're already tensors from the Dataset)
+    # Stack images (tensors from the Dataset)
     images = torch.stack(images, dim=0)
     label_lengths = torch.tensor(label_lengths, dtype=torch.long)
 
@@ -60,7 +61,7 @@ def custom_collate_fn(batch):
 
 # Decode predictions for analysis
 def decode_predictions(predictions, characters):
-    blank_index = len(characters)  # Assuming blank token is the last index
+    blank_index = len(characters)  # the blank token is the last index
     decoded_output = []
     for pred in predictions:
         pred_text = []
@@ -77,7 +78,9 @@ def decode_predictions(predictions, characters):
  
 
 def train_model(model, train_loader, val_loader, test_loader, criterion, optimizer, num_epochs, characters,device):
+    
     model.to(device)
+    # Initialize lists to store training, validation and test results
     train_losses = []
     train_word_accuracies = []
     train_char_accuracies = []
@@ -103,7 +106,9 @@ def train_model(model, train_loader, val_loader, test_loader, criterion, optimiz
             images = images.to(device)
             labels = labels.to(device)
             optimizer.zero_grad()
+            # Forward pass
             outputs = model(images)
+            # permute the outputs to match the shape of the labels
             outputs = outputs.permute(1, 0, 2)
             input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long).to(device)
             # Calculate loss
@@ -157,21 +162,26 @@ def train_model(model, train_loader, val_loader, test_loader, criterion, optimiz
             for batch_idx, (images, labels, label_lengths) in enumerate(val_loader):
                 images = images.to(device)
                 labels = labels.to(device)
+                # Forward pass
                 outputs = model(images)
+                # permute the outputs to match the shape of the labels
                 outputs = outputs.permute(1, 0, 2)
                 input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long).to(device)
-
+                # Calculate losss
                 loss = criterion(outputs, labels, input_lengths, label_lengths)
 
                 running_loss += loss.item()
-
+                # get the predicted sequences
                 predicted_sequences = outputs.argmax(2).permute(1, 0).tolist()
+                # Convert label indices to text
                 label_texts = [
                     "".join([characters[l] for l in label if l < len(characters)])
                     for label in labels.tolist()
                 ]
+                # Decode predicted sequences
                 decoded_predictions = decode_predictions(predicted_sequences, characters)
 
+                # Calculate accuracy
                 for pred_text, label_text in zip(decoded_predictions, label_texts):
                     # Character accuracy
                     correct_chars += sum(p == l for p, l in zip(pred_text, label_text))
@@ -206,14 +216,18 @@ def train_model(model, train_loader, val_loader, test_loader, criterion, optimiz
                 images = images.to(device)
                 labels = labels.to(device)
                 outputs = model(images)
+                # permute the outputs to match the shape of the labels
                 outputs = outputs.permute(1, 0, 2)
                 input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long).to(device)
+                
 
                 predicted_sequences = outputs.argmax(2).permute(1, 0).tolist()
+                # Convert label indices to text
                 label_texts = [
                     "".join([characters[l] for l in label if l < len(characters)])
                     for label in labels.tolist()
                 ]
+                # Decode predicted sequences
                 decoded_predictions = decode_predictions(predicted_sequences, characters)
 
                 # Calculate accuracy
@@ -355,11 +369,12 @@ if __name__ == '__main__':
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
 
 
-
+    # Initialize the model, loss function, and optimizer
     model = CRNNModel(num_classes=num_classes + 1)  # Add 1 for CTC blank index
     criterion = nn.CTCLoss(blank=num_classes).to(device)
     optimizer = optim.AdamW(model.parameters(), lr=0.0005)
 
+    # Train the model
     train_losses, train_word_accuracies, train_char_accuracies ,\
     val_losses, val_word_accuracies, val_char_accuracies ,\
     test_word_accuracies, test_char_accuracies = train_model(
