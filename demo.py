@@ -75,6 +75,7 @@ def predict_demo(model, img_path, characters):
 if __name__ == '__main__':
 
     model = CRNNModel(num_classes=num_classes + 1)
-    model.load_state_dict(torch.load('model_weight/best_model_9.pth'))
-    img_path = '...' # Path to your image file
+    model.load_state_dict(torch.load('training_results_best_model/best_model.pth'))
+    #img_path = 'dataset_final/test/BA999ZZ.png'
+    img_path = 'dataset_final/test/BL654BP.png' 
     predict_demo(model, img_path, characters)
