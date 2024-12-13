@@ -1,243 +1,21 @@
-import pandas as pd
 import torch
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from PIL import Image
-import matplotlib.pyplot as plt
-import numpy as np
-import cv2
-import torch.nn as nn
-import matplotlib.pyplot as plt
-from torchvision.utils import make_grid
-import random
-
-from CRNN_GRU import VGG_GRU_CTC_Model,characters,num_classes
-
-class LicensePlateDataset(Dataset):
-    def __init__(self, csv_file, transform=None):
-        self.data = pd.read_csv(csv_file)
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        img_path = self.data.iloc[idx, 1]  
-        label = self.data.iloc[idx, 2]    
-        image = Image.open(img_path).convert("L")
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, label
-    
-def encode_label(label):
-    # Convert string label to a list of integer indices based on characters
-    return [characters.index(c) for c in label]
-
-
-def decode_output(output):
-    # Convert the indices back to characters
-    return ''.join([characters[i] for i in output])
-
-# class LicensePlateDataset(Dataset):
-#     def __init__(self, csv_file, transform=None):
-#         self.data = pd.read_csv(csv_file)
-#         self.transform = transform
-
-#     def __len__(self):
-#         return len(self.data)
-
-#     def __getitem__(self, idx):
-#         img_path = self.data.iloc[idx, 1]  
-#         label = self.data.iloc[idx, 2]     
-#         label_encoded = encode_label(label)  # Encode label to indices
-#         image = Image.open(img_path).convert("L")
-
-#         if self.transform:
-#             image = self.transform(image)
-
-#         return image, torch.tensor(label_encoded), len(label_encoded)
-    
-# class ResizeWithPadding:
-#     def __init__(self, target_height=32, target_width=128):
-#         self.target_height = target_height
-#         self.target_width = target_width
-
-#     def __call__(self, image):
-#         image = np.array(image)
-#         h, w = image.shape[:2]
-
-#         # Resize the image while maintaining the aspect ratio
-#         scale = self.target_height / h
-#         new_width = int(w * scale)
-#         resized_image = cv2.resize(image, (new_width, self.target_height))
-
-#         # Pad the image to the target width
-#         padded_image = np.zeros((self.target_height, self.target_width), dtype=np.uint8)
-#         padded_image[:, :min(new_width, self.target_width)] = resized_image[:, :min(new_width, self.target_width)]
-
-#         # Convert to 3-channel RGB by stacking
-#         padded_image = np.stack([padded_image] * 3, axis=-1)
-
-#         return Image.fromarray(padded_image)
-
-    
-# def custom_collate_fn(batch):
-#     images, labels, label_lengths = zip(*batch)  # Unpack the batch
-
-#     # Pad labels to the maximum length in this batch
-#     max_label_length = max(label_lengths)
-#     padded_labels = torch.zeros((len(labels), max_label_length), dtype=torch.long)
-#     for i, label in enumerate(labels):
-#         padded_labels[i, :len(label)] = label  # Pad each label to the right
-
-#     # Stack images and label lengths
-#     images = torch.stack(images, dim=0)  # Stack images into a batch tensor
-#     label_lengths = torch.tensor(label_lengths, dtype=torch.long)
-
-#     return images, padded_labels, label_lengths
-
-    
-# if __name__ == '__main__':
-
-#     '''
-#     # normalize the images
-#     transform = transforms.Compose([
-#         ResizeWithPadding(target_height=32, target_width=128),
-#         #transforms.RandomRotation(5),  
-#         #transforms.ColorJitter(brightness=0.2, contrast=0.2),  
-#         transforms.ToTensor(),  
-#         transforms.Normalize(mean=[0.5], std=[0.5])  
-#     ])
-#     dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform)
-
-
-#     batch_size = 32
-#     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-#     # test and visualize the dataloader
-#     images, labels = next(iter(dataloader))
-#     fig, axes = plt.subplots(1, 5, figsize=(15, 5))
-#     for i in range(5):
-#         image = images[i].permute(1, 2, 0).numpy()  
-#         image = (image * 0.5) + 0.5  
-#         axes[i].imshow(image.squeeze(), cmap='gray')  
-#         axes[i].set_title(f"Label: {labels[i]}")
-#         axes[i].axis("off")
-#     plt.show()
-#     '''
-
-
-#     # Test the transformation
-#     transform = transforms.Compose([
-#         ResizeWithPadding(target_height=32, target_width=128),
-#         transforms.ToTensor(),
-#         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Adjust for 3 channels
-#     ])
-
-#     dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform)
-#     image, label, label_length = dataset[0]
-#     print(f"Image shape: {image.shape}")  # Should output (3, 32, 128)
-
-#     # Visualize the transformed image
-#     plt.imshow(image.permute(1, 2, 0).numpy() * 0.5 + 0.5)  # Denormalize for visualization
-#     plt.title(f"Label: {label}")
-#     plt.axis("off")
-#     plt.show()
-
-    
-#     # load data
-#     transform = transforms.Compose([
-#         ResizeWithPadding(target_height=32, target_width=128),
-#         #transforms.RandomRotation(5),  
-#         #transforms.ColorJitter(brightness=0.2, contrast=0.2),  
-#         transforms.ToTensor(),  
-#         transforms.Normalize(mean=[0.5], std=[0.5])  
-#     ])
-
-#     dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform)
-#     dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=custom_collate_fn)
-
-
-#     model = VGG_GRU_CTC_Model()
-
-#     #   CTC loss
-#     criterion = nn.CTCLoss(blank=num_classes-1)  # blank token is used to represent the "no character" label
-#     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-#     # train the model
-#     # num_epochs = 10
-#     # for epoch in range(num_epochs):
-#     #     model.train()
-#     #     running_loss = 0.0
-#     #     for images, labels, label_lengths in dataloader:
-            
-#     #         outputs = model(images)
-            
-            
-#     #         # CTC loss requires the output shape of (T, N, C) (time step, batch size, class)
-#     #         # CTC loss requires the label shape of (N, S) (batch size, label max length)
-#     #         # CTC loss  requires the label length (N,)
-#     #         outputs = outputs.log_softmax(2)  
-#     #         loss = criterion(outputs, labels, label_lengths, torch.full((images.size(0),), outputs.size(1), dtype=torch.long))
-
-            
-#     #         optimizer.zero_grad()
-#     #         loss.backward()
-#     #         optimizer.step()
-            
-#     #         running_loss += loss.item()
-
-#     # Train the model
-#     num_epochs = 1
-#     for epoch in range(num_epochs):
-#         model.train()
-#         running_loss = 0.0
-#         for images, labels, label_lengths in dataloader:
-#             outputs = model(images)  # Shape: (batch_size, sequence_length, num_classes)
-
-#             # Permute outputs to (T, N, C) for CTCLoss
-#             outputs = outputs.permute(1, 0, 2).log_softmax(2)  # Shape: (sequence_length, batch_size, num_classes)
-#             print(f"Outputs shape before permute: {outputs.shape}")
-#             # Calculate the input lengths (all are equal to sequence_length)
-#             input_lengths = torch.full((images.size(0),), outputs.size(0), dtype=torch.long)
-
-#             # Calculate CTC loss
-#             loss = criterion(outputs, labels, input_lengths, label_lengths)
-
-#             optimizer.zero_grad()
-#             loss.backward()
-#             optimizer.step()
-
-#             running_loss += loss.item()
-
-#         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(dataloader):.4f}")
-
-        
-#         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(dataloader):.4f}")
-
-#     # save the model
-#     torch.save(model.state_dict(), 'vgg_gru_ctc_model.pth')
-
 import pandas as pd
-import torch
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-from PIL import Image
-import matplotlib.pyplot as plt
 import numpy as np
-import cv2
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.optim import Adam
+import matplotlib.pyplot as plt
+
+from CRNN_model import CRNNModel
 
 
-# Import your model configuration
-from CRNN_GRU import characters, num_classes
+# Define characters and number of classes
+characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+num_classes = len(characters)
 
-
-# Dataset class
+# Dataset Class
 class LicensePlateDataset(Dataset):
     def __init__(self, csv_file, transform=None):
         self.data = pd.read_csv(csv_file)
@@ -249,167 +27,347 @@ class LicensePlateDataset(Dataset):
     def __getitem__(self, idx):
         img_path = self.data.iloc[idx, 1]
         label = self.data.iloc[idx, 2]
-        label_encoded = encode_label(label)  # Encode label to indices
-        image = Image.open(img_path).convert("L")
+        label_encoded = [characters.index(c) for c in label]
+        image = Image.open(img_path).convert("L")  # convert to grayscale image
 
         if self.transform:
-            image = self.transform(image)
+            #image = np.array(image)  # Convert PIL image to ndarray
+            image = self.transform(image)  
 
         return image, torch.tensor(label_encoded), len(label_encoded)
 
 
-# Resize with padding
-class ResizeWithPadding:
-    def __init__(self, target_height=32, target_width=128):
-        self.target_height = target_height
-        self.target_width = target_width
-
-    def __call__(self, image):
-        image = np.array(image)
-        h, w = image.shape[:2]
-
-        # Resize the image while maintaining the aspect ratio
-        scale = self.target_height / h
-        new_width = int(w * scale)
-        resized_image = cv2.resize(image, (new_width, self.target_height))
-
-        # Pad the image to the target width
-        padded_image = np.zeros((self.target_height, self.target_width), dtype=np.uint8)
-        padded_image[:, :min(new_width, self.target_width)] = resized_image[:, :min(new_width, self.target_width)]
-
-        # Convert to 3-channel RGB by stacking
-        padded_image = np.stack([padded_image] * 3, axis=-1)
-
-        return Image.fromarray(padded_image)
 
 
-# Custom collation function for variable-length labels
+# Custom Collate Function
 def custom_collate_fn(batch):
     images, labels, label_lengths = zip(*batch)
-
-    # Pad labels to the maximum length in this batch
     max_label_length = max(label_lengths)
-    padded_labels = torch.zeros((len(labels), max_label_length), dtype=torch.long)
+
+    # Pad labels to the maximum label length in the batch
+    pad_index = len(characters)
+    padded_labels = torch.full((len(labels), max_label_length), pad_index, dtype=torch.long)
     for i, label in enumerate(labels):
         padded_labels[i, :len(label)] = label
 
-    # Stack images and label lengths
+    # Stack images (they're already tensors from the Dataset)
     images = torch.stack(images, dim=0)
     label_lengths = torch.tensor(label_lengths, dtype=torch.long)
 
     return images, padded_labels, label_lengths
 
 
-# Encode labels into indices
-def encode_label(label):
-    return [characters.index(c) for c in label]
 
+# Decode predictions for analysis
+def decode_predictions(predictions, characters):
+    blank_index = len(characters)  # Assuming blank token is the last index
+    decoded_output = []
+    for pred in predictions:
+        pred_text = []
+        prev_char = None
+        for p in pred:
+            if p == blank_index:  # Skip blank token
+                prev_char = None
+                continue
+            if p != prev_char:  # Skip repeated characters
+                pred_text.append(characters[p])
+            prev_char = p
+        decoded_output.append("".join(pred_text))
+    return decoded_output
+ 
 
-# Model Definition
-class VGG_GRU_CTC_Model(nn.Module):
-    def __init__(self):
-        super(VGG_GRU_CTC_Model, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # 32x128 -> 16x64
-            nn.Conv2d(64, 128, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # 16x64 -> 8x32
-            nn.Conv2d(128, 256, kernel_size=3, padding=1), nn.ReLU(),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=(2, 1), padding=(0, 1)),  # 8x32 -> 4x33
-        )
-        self.rnn = nn.GRU(input_size=256 * 4, hidden_size=256, bidirectional=True, batch_first=True)
-        self.classifier = nn.Linear(256 * 2, num_classes + 1)  # +1 for blank token
+def train_model(model, train_loader, val_loader, test_loader, criterion, optimizer, num_epochs, characters,device):
+    model.to(device)
+    train_losses = []
+    train_word_accuracies = []
+    train_char_accuracies = []
+    val_losses = []
+    val_word_accuracies = []
+    val_char_accuracies = []
+    test_word_accuracies = []
+    test_char_accuracies = []
+    best_val_character_acc = 0.0
+    
 
-    def forward(self, x):
-        x = self.features(x)  # Shape: (batch_size, 256, 4, 33)
-        batch_size, channels, height, width = x.size()
+    for epoch in range(1, num_epochs + 1):
 
-        x = x.permute(0, 3, 1, 2)  # (batch_size, width, channels, height)
-        x = x.contiguous().view(batch_size, width, -1)  # (batch_size, sequence_length, features)
+        # training part
+        model.train()
+        running_loss = 0.0
+        correct_words = 0
+        total_words = 0
+        correct_chars = 0
+        total_chars = 0
 
-        x, _ = self.rnn(x)  # (batch_size, sequence_length, hidden_size*2)
-        x = self.classifier(x)  # (batch_size, sequence_length, num_classes + 1)
-        return x
+        for batch_idx, (images, labels, label_lengths) in enumerate(train_loader):
+            images = images.to(device)
+            labels = labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(images)
+            outputs = outputs.permute(1, 0, 2)
+            input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long).to(device)
+            # Calculate loss
+            loss = criterion(outputs, labels, input_lengths, label_lengths)
+            # Backpropagation
+            loss.backward()
+            # Update weights
+            optimizer.step()
 
-def visualize_training_data(dataset, num_samples=5):
-    """
-    Visualize training data with images and their corresponding labels.
-    """
-    # Randomly sample data points
-    sampled_data = random.sample(range(len(dataset)), num_samples)
-    fig, axes = plt.subplots(1, num_samples, figsize=(15, 5))
+            running_loss += loss.item()
+            # get the predicted sequences
+            predicted_sequences = outputs.argmax(2).permute(1, 0).tolist()
+            # Convert label indices to text
+            label_texts = [
+                "".join([characters[l] for l in label if l < len(characters)])
+                for label in labels.tolist()
+            ]
+            # Decode predicted sequences
+            decoded_predictions = decode_predictions(predicted_sequences, characters)
 
-    for i, idx in enumerate(sampled_data):
-        image, label, _ = dataset[idx]
-        decoded_label = ''.join([characters[c] for c in label.tolist()])  # Decode label indices to string
+            for pred_text, label_text in zip(decoded_predictions, label_texts):
+                # Character accuracy
+                correct_chars += sum(p == l for p, l in zip(pred_text, label_text))
+                total_chars += len(label_text)
 
-        # Prepare the image for visualization
-        image = image.permute(1, 2, 0).numpy()  # Change channel order for matplotlib
-        image = (image * 0.5) + 0.5  # De-normalize the image
+                # Word accuracy
+                if pred_text == label_text:
+                    correct_words += 1
+                total_words += 1
+
+        # save the training results
+        t_epoch_loss = running_loss / len(train_loader)
+        t_word_accuracy = correct_words / total_words
+        t_char_accuracy = correct_chars / total_chars
+
+        train_losses.append(t_epoch_loss)
+        train_word_accuracies.append(t_word_accuracy)
+        train_char_accuracies.append(t_char_accuracy)
+
         
-        # Display the image and label
-        axes[i].imshow(image.squeeze(), cmap='gray')
-        axes[i].set_title(f"Label: {decoded_label}", fontsize=12)
-        axes[i].axis("off")
+
+        # validation
+        model.eval()
+        running_loss = 0.0
+        correct_words = 0
+        total_words = 0
+        correct_chars = 0
+        total_chars = 0
+
+        with torch.no_grad():
+            for batch_idx, (images, labels, label_lengths) in enumerate(val_loader):
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = model(images)
+                outputs = outputs.permute(1, 0, 2)
+                input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long).to(device)
+
+                loss = criterion(outputs, labels, input_lengths, label_lengths)
+
+                running_loss += loss.item()
+
+                predicted_sequences = outputs.argmax(2).permute(1, 0).tolist()
+                label_texts = [
+                    "".join([characters[l] for l in label if l < len(characters)])
+                    for label in labels.tolist()
+                ]
+                decoded_predictions = decode_predictions(predicted_sequences, characters)
+
+                for pred_text, label_text in zip(decoded_predictions, label_texts):
+                    # Character accuracy
+                    correct_chars += sum(p == l for p, l in zip(pred_text, label_text))
+                    total_chars += len(label_text)
+                    # Word accuracy
+                    if pred_text == label_text:
+                        correct_words += 1
+                    total_words += 1
+
+            # save the validation results
+            v_epoch_loss = running_loss / len(val_loader)
+            v_word_accuracy = correct_words / total_words
+            v_char_accuracy = correct_chars / total_chars
+
+            val_losses.append(v_epoch_loss)
+            val_word_accuracies.append(v_word_accuracy)
+            val_char_accuracies.append(v_char_accuracy)
+
+           
+
+
+        # test part
+        model.eval()
+
+        correct_words = 0
+        total_words = 0
+        correct_chars = 0
+        total_chars = 0
+
+        with torch.no_grad():
+            for batch_idx, (images, labels, label_lengths) in enumerate(test_loader):
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = model(images)
+                outputs = outputs.permute(1, 0, 2)
+                input_lengths = torch.full((outputs.size(1),), outputs.size(0), dtype=torch.long).to(device)
+
+                predicted_sequences = outputs.argmax(2).permute(1, 0).tolist()
+                label_texts = [
+                    "".join([characters[l] for l in label if l < len(characters)])
+                    for label in labels.tolist()
+                ]
+                decoded_predictions = decode_predictions(predicted_sequences, characters)
+
+                # Calculate accuracy
+                for pred_text, label_text in zip(decoded_predictions, label_texts):
+                    # Character accuracy
+                    correct_chars += sum(p == l for p, l in zip(pred_text, label_text))
+                    total_chars += len(label_text)
+
+                    # Word accuracy
+                    if pred_text == label_text:
+                        correct_words += 1
+                    total_words += 1
+
+            test_word_accuracy = correct_words / total_words
+            test_char_accuracy = correct_chars / total_chars
+
+            test_word_accuracies.append(test_word_accuracy)
+            test_char_accuracies.append(test_char_accuracy)
+
+            # Save best model based on character accuracy on validation set
+            if v_char_accuracy > best_val_character_acc:
+                best_val_word_acc = v_word_accuracy
+                best_val_character_acc = v_char_accuracy
+                best_test_word_acc = test_word_accuracy
+                best_test_character_acc = test_char_accuracy
+                torch.save(model.state_dict(), "train_model.pth")
+
+            # Print epoch results
+            print(f"Epoch [{epoch}/{num_epochs}] - T_Loss: {t_epoch_loss:.4f}, T_Word_Acc: {t_word_accuracy:.4f}, T_Char_Acc: {t_char_accuracy:.4f}, V_Loss: {v_epoch_loss:.4f}, V_Word_Acc: {v_word_accuracy:.4f}, V_Char_Acc: {v_char_accuracy:.4f}")
+
+    # print the best results
+    print(f"Best Validation Character Accuracy: {best_val_character_acc:.4f}")
+    print(f"Corresponding Validation Word Accuracy: {best_val_word_acc:.4f}")
+    print(f"Corresponding Test Character Accuracy: {best_test_character_acc:.4f}")
+    print(f"Corresponding Test Word Accuracy: {best_test_word_acc:.4f}")
+
+    
+
+    return train_losses, train_word_accuracies, train_char_accuracies, val_losses, val_word_accuracies, val_char_accuracies, test_word_accuracies, test_char_accuracies
+
+
+
+def plot_metrics(train_losses, train_word_accuracies, train_char_accuracies,val_losses, val_word_accuracies, val_char_accuracies, test_word_accuracies, test_char_accuracies):
+    epochs = range(1, len(train_losses) + 1)
+
+    # First Figure: Training and Validation Loss and Accuracies
+    plt.figure(figsize=(18, 5))
+
+    # Loss plot
+    plt.subplot(1, 3, 1)
+    plt.plot(epochs, train_losses, label="Train Loss")
+    plt.plot(epochs, val_losses, label="Val Loss")
+    plt.title("Training Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+
+    # Word accuracy plot
+    plt.subplot(1, 3, 2)
+    plt.plot(epochs, train_word_accuracies, label="Train Word Accuracy")
+    plt.plot(epochs, val_word_accuracies, label="Val Word Accuracy")
+    plt.title("Word Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+
+    # Character accuracy plot
+    plt.subplot(1, 3, 3)
+    plt.plot(epochs, train_char_accuracies, label="Train Character Accuracy")
+    plt.plot(epochs, val_char_accuracies, label="Val Character Accuracy")
+    plt.title("Character Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+    # Second Figure: Test Accuracies
+    plt.figure(figsize=(10, 5))
+
+    # Test Word Accuracy plot
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, test_word_accuracies, label="Test Word Accuracy")
+    plt.title("Test Word Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+
+    # Test Character Accuracy plot
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, test_char_accuracies, label="Test Character Accuracy")
+    plt.title("Test Character Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
 
     plt.tight_layout()
     plt.show()
 
 
-
-# Main Training Loop
 if __name__ == '__main__':
-    transform = transforms.Compose([
-        ResizeWithPadding(target_height=32, target_width=128),
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    
+    # Define transforms for training data
+    transform_train = transforms.Compose([
+        transforms.Lambda(lambda img: Image.fromarray(img) if isinstance(img, np.ndarray) else img),
+        transforms.Resize((32, 128)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        # do data augmentation with probability of 0.5
+        transforms.RandomApply([transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0)], p=0.5),
+        transforms.RandomApply([transforms.RandomRotation(degrees=5)], p=0.5),
+        transforms.Normalize(mean=[0.5], std=[0.5]),
     ])
 
-    dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=custom_collate_fn)
-
-    model = VGG_GRU_CTC_Model()
-
-    criterion = nn.CTCLoss(blank=num_classes)  # blank token is used to represent the "no character" label
-    optimizer = Adam(model.parameters(), lr=0.001)
-
-    num_epochs = 5
-    for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-        for images, labels, label_lengths in dataloader:
-            outputs = model(images)
-
-            # Permute outputs to (T, N, C) for CTCLoss
-            outputs = outputs.permute(1, 0, 2).log_softmax(2)  # Shape: (sequence_length, batch_size, num_classes)
-
-            # Calculate the input lengths (all equal to sequence_length)
-            input_lengths = torch.full((images.size(0),), outputs.size(0), dtype=torch.long)
-
-            # Compute loss
-            loss = criterion(outputs, labels, input_lengths, label_lengths)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-
-        print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(dataloader):.4f}")
-
-    torch.save(model.state_dict(), 'vgg_gru_ctc_model.pth')
-
-    # Use the visualization function
-    transform = transforms.Compose([
-        ResizeWithPadding(target_height=32, target_width=128),
+    # Define transforms for validation and test data
+    transform_val_test = transforms.Compose([
+        transforms.Lambda(lambda img: Image.fromarray(img) if isinstance(img, np.ndarray) else img),
+        transforms.Resize((32, 128)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        transforms.Normalize(mean=[0.5], std=[0.5]),
     ])
 
-    # Load the dataset
-    train_dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform)
 
-    # Visualize 5 random samples
-    visualize_training_data(train_dataset, num_samples=5)
 
+    batch_size = 32
+
+    # Training data loader
+    train_dataset = LicensePlateDataset(csv_file='labels_train.csv', transform=transform_train)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=custom_collate_fn)
+
+    # Validation and test data loaders
+    val_set = LicensePlateDataset(csv_file='labels_val.csv', transform=transform_val_test)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+
+    test_set = LicensePlateDataset(csv_file='labels_test.csv', transform=transform_val_test)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, collate_fn=custom_collate_fn)
+
+
+
+    model = CRNNModel(num_classes=num_classes + 1)  # Add 1 for CTC blank index
+    criterion = nn.CTCLoss(blank=num_classes).to(device)
+    optimizer = optim.AdamW(model.parameters(), lr=0.0005)
+
+    train_losses, train_word_accuracies, train_char_accuracies ,\
+    val_losses, val_word_accuracies, val_char_accuracies ,\
+    test_word_accuracies, test_char_accuracies = train_model(
+        model, train_loader, val_loader, test_loader, criterion, optimizer, num_epochs=200, characters=characters,device=device
+    )
+
+
+    
+
+    # Plot the training results
+    plot_metrics(train_losses, train_word_accuracies, train_char_accuracies,val_losses, val_word_accuracies, val_char_accuracies, test_word_accuracies, test_char_accuracies)
