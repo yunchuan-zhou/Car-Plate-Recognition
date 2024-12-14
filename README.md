@@ -1,7 +1,7 @@
 # Car-Plate-Recognition
 This project implements a license plate recognition system using a Convolutional Recurrent Neural Network (CRNN) combined with Connectionist Temporal Classification (CTC) loss. The model is capable of recognizing alphanumeric characters on license plates from images.
 ## Requirements 
-Ensure you have Python 3.10.14 installed. Install the required libraries using the following command:  
+Ensure you have a compatible version of Python installed (e.g., Python 3.10 or later). Install the required libraries using the following command:  
 ```pip install -r requirements.txt```
 ## Dataset source:
 European License Plates Dataset from Kaggle: https://www.kaggle.com/datasets/abdelhamidzakaria/european-license-plates-dataset 
